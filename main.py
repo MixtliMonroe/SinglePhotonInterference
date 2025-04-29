@@ -9,6 +9,12 @@ import matplotlib.pyplot as plt
 import scipy as sci
 import keyboard
 
+def nstobins(qutag, nsecods):
+        # Get the timebase of the quTAG.
+        timebase = qutag.getTimebase()
+        bins = int(nsecods / timebase) # convert seconds to bins
+        return bins
+
 def printDeviceSettings(qutag):
         # Get the calibration state of the device
         calibState = qutag.getCalibrationState()
@@ -17,6 +23,9 @@ def printDeviceSettings(qutag):
         # Get the timebase (the resolution) from the quTAG. It is used as time unit by many other functions.
         timebase = qutag.getTimebase()
         print("Device timebase:", timebase, "s")
+
+        # Get the buffer size for the timestamps
+        print("buffer size: ", qutag.getBufferSize())
 
         time.sleep(1)
         data,updates = qutag.getCoincCounters()
@@ -38,7 +47,6 @@ def livePlot(qutag, channels):
         # We use the exposure time for the y-axis in the plot 
         na, coincWin, expTime = qutag.getDeviceParams()
         print("Coincidence window",coincWin, "bins, exposure time",expTime, "ms")
-
         
         # Init plotting with matplotlib 
         fig = plt.figure()
@@ -102,17 +110,39 @@ def getData(qutag, exposureTime, coincidenceWindow):
         qutag.setCoincidenceWindow(coincidenceWindow) # bins??
 
         # Give some time to accumulate data
-        time.sleep(exposureTime) # 1 second sleep time with 100ms exposure time would give ~10 times data we don't get
+        time.sleep(exposureTime/10**3) # 1 second sleep time with 100ms exposure time would give ~10 times data we don't get
 
         # The coincidence counters are not accumulated, i.e. the counter values for the last exposure (see setExposureTime ) are returned.
-        data, updates = qutag.getCoincCounters()
-        print("Updates: ", updates)
+        counts, updates = qutag.getCoincCounters()
 
         # Array for 
         CoincCounter_names = ['0(Start)','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','1/2','1/3','2/3','1/4','2/4','3/4','1/5','2/5','3/5','4/5','1/2/3','1/2/4','1/3/4','2/3/4','1/2/5','1/3/5','2/3/5','1/4/5','2/4/5','3/4/5','1/2/3/4','1/2/3/5','1/2/4/5','1/3/4/5','2/3/4/5','1/2/3/4/5']
 
         print("Channel/Coincidence : Counts ")
         for i in range(len(CoincCounter_names)):
-                print(CoincCounter_names[i], ": ", data[i])
+                print(CoincCounter_names[i], ": ", counts[i])
         
-        return data
+        print("Updates: ", updates)
+
+        dataloss = qutag.getDataLost()
+        print("Data loss: ", dataloss)
+
+        timestamps_data, timestamps_channels, valid_entries = qutag.getLastTimestamps(False)
+        print("Timestamps: ", timestamps_data)
+        print("Corresponding channels: ", timestamps_channels)
+        print("Valid timestamp entries: ", valid_entries)
+
+        return counts, timestamps_data, timestamps_channels, valid_entries
+
+def generateG2(qutag):
+        hbt_func = qutag.createHBTFunction()
+        return qutag.calcHBTG2(hbt_func)
+
+if __name__ == "__main__":
+        #Initialize the quTAG device
+        qutag = QuTAG_MC.QuTAG()
+        qutag.enableHBT(True)
+
+
+        # Deinitialize the quTAG device when done
+        qutag.deInitialize()
