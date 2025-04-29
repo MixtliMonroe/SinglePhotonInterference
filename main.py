@@ -94,3 +94,25 @@ def livePlot(qutag, channels):
                                 plt.plot(x, y[i], '-', label="Ch " + str(channel))
                         plt.legend()
                         plt.pause(0.01)
+
+def getData(qutag, exposureTime, coincidenceWindow):
+        # Set the exposure time (or integration time) of the internal coincidence counters in milliseconds, range = 0...65535
+        qutag.setExposureTime(exposureTime) # 100 ms exposure time
+
+        qutag.setCoincidenceWindow(coincidenceWindow) # bins??
+
+        # Give some time to accumulate data
+        time.sleep(exposureTime) # 1 second sleep time with 100ms exposure time would give ~10 times data we don't get
+
+        # The coincidence counters are not accumulated, i.e. the counter values for the last exposure (see setExposureTime ) are returned.
+        data, updates = qutag.getCoincCounters()
+        print("Updates: ", updates)
+
+        # Array for 
+        CoincCounter_names = ['0(Start)','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','1/2','1/3','2/3','1/4','2/4','3/4','1/5','2/5','3/5','4/5','1/2/3','1/2/4','1/3/4','2/3/4','1/2/5','1/3/5','2/3/5','1/4/5','2/4/5','3/4/5','1/2/3/4','1/2/3/5','1/2/4/5','1/3/4/5','2/3/4/5','1/2/3/4/5']
+
+        print("Channel/Coincidence : Counts ")
+        for i in range(len(CoincCounter_names)):
+                print(CoincCounter_names[i], ": ", data[i])
+        
+        return data
