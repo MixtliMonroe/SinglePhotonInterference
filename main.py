@@ -1,83 +1,100 @@
-#*****************************************************************************
-#
-#  Project:        quTAG MC User Library
-#
-#  Filename:       example.cs
-#
-#  Purpose:        Minimal example for Python
-#
-#  Author:         N-Hands GmbH & Co KG
-#
-#*****************************************************************************
-# $Id: example0.py,v 1.1 2020/11/25 14:55:45 trurl Exp $
+try:
+        import QuTAG_MC
+except:
+        print("Time Tagger wrapper QuTAG.py is not in the search path / same folder.")
 
-import ctypes
-import os
-import time
-import platform
 import numpy as np
+import time
+import matplotlib.pyplot as plt
+import scipy as sci
+import keyboard
 
-# API --------------------------------------------------------------    
+def printDeviceSettings(qutag):
+        # Get the calibration state of the device
+        calibState = qutag.getCalibrationState()
+        print("getCalibrationState: ", calibState)
 
-LIBRARY_PATH = r'C:\\Users\\mgm1g22\\OneDrive - University of Southampton\Documents\\QUTAG-MC-WIN64QT5-v1.0.12\\tdcbase.dll'
-class QuTAG:
-            
-    def __init__(self):
-        # load Lib -------------------------------------------
-        if (platform.system()=="Windows"):
-            self.tdclib = ctypes.windll.LoadLibrary(LIBRARY_PATH)
-        if (platform.system()=="Linux"):
-            self.tdclib = ctypes.cdll.LoadLibrary('libtdcbase.so')
+        # Get the timebase (the resolution) from the quTAG. It is used as time unit by many other functions.
+        timebase = qutag.getTimebase()
+        print("Device timebase:", timebase, "s")
 
-        # ------- tdcbase.h --------------------------------------------------------
-        self.tdclib.TDC_getVersion.argtypes = None
-        self.tdclib.TDC_getVersion.restype = ctypes.c_double
-        self.tdclib.TDC_perror.argtypes = [ctypes.c_int32]
-        self.tdclib.TDC_perror.restype = ctypes.c_char_p
-        self.tdclib.TDC_init.argtypes = [ctypes.c_int32]
-        self.tdclib.TDC_init.restype = ctypes.c_int32
-        self.tdclib.TDC_deInit.argtypes = None
-        self.tdclib.TDC_deInit.restype = ctypes.c_int32
-        self.tdclib.TDC_setCoincidenceWindow.argtypes = [ctypes.c_int32]
-        self.tdclib.TDC_setCoincidenceWindow.restype = ctypes.c_int32
-        self.tdclib.TDC_setExposureTime.argtypes = [ctypes.c_int32]
-        self.tdclib.TDC_setExposureTime.restype = ctypes.c_int32
-        self.tdclib.TDC_getCoincCounters.argtypes = [ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32)]
-        self.tdclib.TDC_getCoincCounters.restype = ctypes.c_int32
+        time.sleep(1)
+        data,updates = qutag.getCoincCounters()
+        print("Updates since last call: ", updates, "| Data: ", data)
 
-# Error Check --------------------------------------------------------------
+        # Read back device parameters: coincidence window in bins (bin width is timebase) and exposuretime in ms
+        na, coincWin, expTime = qutag.getDeviceParams()
+        print("Coincidence window", coincWin, "bins, exposure time",expTime, "ms")
 
-    def perror(self,environ,returnCode):
-        if (returnCode != 0):
-            msg = self.tdclib.TDC_perror(returnCode)
-            print("Error in %s: %s" % (environ, msg))
+        enabledchannels = qutag.getChannelsEnabled()
+        print("Enabled channels: ", enabledchannels)
 
-# Example --------------------------------------------------------------    
+        # Get status of external clock"
+        clockState = qutag.getClockState()
+        print("Clock State: locked ", clockState[0], ", uplink ", clockState[1])
 
-print("QuTAG Python Demo")
-qutag = QuTAG()
-rc = qutag.tdclib.TDC_init(-1)  # accept any device
-qutag.perror("TDC_init", rc)
+def livePlot(qutag, channels):
+        # Read back device parameters: coincidence window in bins (bin width corresponds to timebase) and exposuretime in ms
+        # We use the exposure time for the y-axis in the plot 
+        na, coincWin, expTime = qutag.getDeviceParams()
+        print("Coincidence window",coincWin, "bins, exposure time",expTime, "ms")
 
-if (rc == 0):
-    print("Initialized with QuTAG DLL v%f"%(qutag.tdclib.TDC_getVersion()))
+        
+        # Init plotting with matplotlib 
+        fig = plt.figure()
+        fig.set_size_inches(10,7)
+        subplt = fig.add_subplot(1,1,1)
 
-    rc = qutag.tdclib.TDC_setCoincidenceWindow(20000)  # 20ns coincidence window
-    qutag.perror("TDC_setCoincidenceWindow", rc)
-    rc = qutag.tdclib.TDC_setExposureTime(100)
-    qutag.perror("TDC_setExposureTime", rc)
+        # Arrays for saving data for plotting
+        x = []
+        y = [[] for _ in channels]
+        
+        # Arrays for saving data for plotting
+        x = list(range(30))
+        y = [[0 for _ in range(30)] for _ in channels]
+        
 
-    for i in range(50):
-        time.sleep(0.09)
-        data = np.zeros(int(59),dtype=np.int32)
-        updates = ctypes.c_int32()
-        rc = qutag.tdclib.TDC_getCoincCounters(data.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),ctypes.byref(updates))
-        qutag.perror("TDC_getCoincCounters", rc)
-        if (updates.value > 1 and i > 0):
-            print("Missed ", updates.value-1, "updates")
-        if (updates.value > 0):
-            print("1:", data[1], " 2:", data[2], " 3:", data[3], "   1-2:", data[33], " 1-3:", data[34], " 1-2-3:", data[43])
-	
-    # deinitialize device
-    rc = qutag.tdclib.TDC_deInit()
-    qutag.perror("TDC_deInit", rc)
+        # Increment in loop for plotting when new data comes from quTAG
+        newdata = 0
+
+        while True:
+                if keyboard.is_pressed('esc'):
+                        print("Quitting...")
+                        break
+                time.sleep(0.1)
+                # Get the data from quTAG.
+                data,updates = qutag.getCoincCounters()
+                print("Data: ", data)
+                # updates	Output: Number of data updates by the device since the last call. Pointer may be NULL.
+                # data	        Output: Counter Values. The array must have at least 31 elements.
+                #                       The Counters come in the following channel order with single counts and coincidences:
+                #                       0(5), 1, 2, 3, 4, 1/2, 1/3, 2/3, 1/4, 2/4, 3/4, 1/5, 2/5, 3/5, 4/5, 1/2/3, 1/2/4, 1/3/4, 2/3/4, 1/2/5, 1/3/5, 2/3/5, 1/4/5, 2/4/5, 3/4/5, 1/2/3/4, 1/2/3/5, 1/2/4/5, 1/3/4/5, 2/3/4/5, 1/2/3/4/5 
+                ### see 'tdcbase.h' file reference for more info: function TDC_getCoincCounters(Int32 *data, Int32 *updates)
+
+                
+                if (updates == 0):
+                        # No new data...
+                        print("waiting for new data...")
+                else:
+                        # Push the countrates of channel 1 & 2 in arrays for plotting...
+                        newdata += 1
+                        x.append(newdata*expTime/500)
+                        for i, channel in enumerate(channels):
+                                y[i].append(data[channel])
+                        # Plotting...
+                        plt.cla()
+                        subplt.set_title('quTAG count rates')
+                        plt.xlabel('Time [s]')
+                        plt.ylabel('Countrate [1/' + str(expTime/1000) +'s]')
+                        
+                        # Let's remove old data from the plotting array, so only e.g. the last 30 datapoints are plotted
+                        if (len(x) > 30):
+                                x.pop(0)
+                                for i in range(len(channels)):
+                                        y[i].pop(0)
+
+                        # Plot the data
+                        for i, channel in enumerate(channels):
+                                plt.plot(x, y[i], '-', label="Ch " + str(channel))
+                        plt.legend()
+                        plt.pause(0.01)
