@@ -49,10 +49,6 @@ def livePlot(qutag, channels):
         x = []
         y = [[] for _ in channels]
         
-        # Arrays for saving data for plotting
-        x = list(range(30))
-        y = [[0 for _ in range(30)] for _ in channels]
-        
 
         # Increment in loop for plotting when new data comes from quTAG
         newdata = 0
