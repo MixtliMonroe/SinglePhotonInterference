@@ -9,13 +9,16 @@ import matplotlib.pyplot as plt
 import scipy as sci
 import keyboard
 
-def nstobins(qutag, nsecods):
+def nstobins(qutag, nseconds):
         # Get the timebase of the quTAG.
         timebase = qutag.getTimebase()
-        bins = int(nsecods / timebase) # convert seconds to bins
+        bins = int(nseconds / (1e9 * timebase)) # convert nanoseconds to bins
         return bins
 
 def printDeviceSettings(qutag):
+        '''
+        Print some device settings to the console.
+        '''
         # Get the calibration state of the device
         calibState = qutag.getCalibrationState()
         print("getCalibrationState: ", calibState)
@@ -26,10 +29,6 @@ def printDeviceSettings(qutag):
 
         # Get the buffer size for the timestamps
         print("buffer size: ", qutag.getBufferSize())
-
-        time.sleep(1)
-        data,updates = qutag.getCoincCounters()
-        print("Updates since last call: ", updates, "| Data: ", data)
 
         # Read back device parameters: coincidence window in bins (bin width is timebase) and exposuretime in ms
         na, coincWin, expTime = qutag.getDeviceParams()
@@ -42,7 +41,10 @@ def printDeviceSettings(qutag):
         clockState = qutag.getClockState()
         print("Clock State: locked ", clockState[0], ", uplink ", clockState[1])
 
-def livePlot(qutag, channels):
+def livePlot(qutag, channels, buffer=30):
+        '''
+        Show a live plot of the count rates of the channels in the list 'channels'.
+        '''
         # Read back device parameters: coincidence window in bins (bin width corresponds to timebase) and exposuretime in ms
         # We use the exposure time for the y-axis in the plot 
         na, coincWin, expTime = qutag.getDeviceParams()
@@ -84,15 +86,15 @@ def livePlot(qutag, channels):
                         newdata += 1
                         x.append(newdata*expTime/500)
                         for i, channel in enumerate(channels):
-                                y[i].append(data[channel])
+                                y[i].append(10*np.array(data[channel]))
                         # Plotting...
                         plt.cla()
                         subplt.set_title('quTAG count rates')
-                        plt.xlabel('Time [s]')
-                        plt.ylabel('Countrate [1/' + str(expTime/1000) +'s]')
+                        plt.xlabel('Time s')
+                        plt.ylabel('Countrate Hz')
                         
                         # Let's remove old data from the plotting array, so only e.g. the last 30 datapoints are plotted
-                        if (len(x) > 30):
+                        if (len(x) > buffer):
                                 x.pop(0)
                                 for i in range(len(channels)):
                                         y[i].pop(0)
@@ -103,20 +105,73 @@ def livePlot(qutag, channels):
                         plt.legend()
                         plt.pause(0.01)
 
+def liveG2Plot(qutag, channel1, channel2, histogramWidth = 1, binCount=256):
+        '''
+        DOESNT WORK YET!!!
+        '''
+        # Read back device parameters: coincidence window in bins (bin width corresponds to timebase) and exposuretime in us
+        print("histogram width: ", histogramWidth, "us, bin count: ", binCount)
+
+        binWidth = (10**-6 * histogramWidth/binCount)/qutag.getTimebase()
+
+        # Init the HBT function
+        qutag.enableHBT(True)
+        qutag.setHBTParams(binWidth=binWidth, binCount=binCount)
+        qutag.setHBTInput(channel1,channel2)
+        hbtfunc = qutag.createHBTFunction()
+
+        # Init plotting with matplotlib 
+        fig = plt.figure()
+        fig.set_size_inches(10,7)
+        subplt = fig.add_subplot(1,1,1)
+
+        # Array for data for plotting
+        x = -np.arange(1, 2*binCount)
+
+        while True:
+                if keyboard.is_pressed('esc'):
+                        print("Quitting...")
+                        break
+                time.sleep(0.1)
+
+                # Get the update data from quTAG.
+                _,updates = qutag.getCoincCounters()
+
+                if (updates == 0):
+                        # No new data...
+                        print("waiting for new data...")
+                else:
+                        # get HBT function data
+                        print("Integration time", qutag.getHBTIntegrationTime())
+                        (capacity_value,size_value,binWidth_value, iOffset_value,values) = qutag.analyzeHBTFunction(hbtfunc)
+                        print("Capacity: ", capacity_value, "Size: ", size_value, "Bin width: ", binWidth_value, "Offset: ", iOffset_value)
+
+                        # Plotting...
+                        plt.cla()
+                        subplt.set_title('HBT function')
+                        plt.xlabel('Time??? [bins]')
+                        plt.ylabel('g2?')
+                        plt.plot(x, values, '-', label="Ch " + str(channel1) + " & " + str(channel2))
+                        plt.legend()
+                        plt.pause(0.01)
+
 def getData(qutag, exposureTime, coincidenceWindow):
+        '''
+        Get the data from the quTAG device given the exposure time and coincidence window.
+        '''
         # Set the exposure time (or integration time) of the internal coincidence counters in milliseconds, range = 0...65535
         qutag.setExposureTime(exposureTime) # 100 ms exposure time
 
         qutag.setCoincidenceWindow(coincidenceWindow) # bins??
 
         # Give some time to accumulate data
-        time.sleep(exposureTime/10**3) # 1 second sleep time with 100ms exposure time would give ~10 times data we don't get
+        time.sleep(exposureTime/10**3)
 
         # The coincidence counters are not accumulated, i.e. the counter values for the last exposure (see setExposureTime ) are returned.
         counts, updates = qutag.getCoincCounters()
 
         # Array for 
-        CoincCounter_names = ['0(Start)','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','1/2','1/3','2/3','1/4','2/4','3/4','1/5','2/5','3/5','4/5','1/2/3','1/2/4','1/3/4','2/3/4','1/2/5','1/3/5','2/3/5','1/4/5','2/4/5','3/4/5','1/2/3/4','1/2/3/5','1/2/4/5','1/3/4/5','2/3/4/5','1/2/3/4/5']
+        CoincCounter_names = ['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','1/2','1/3','2/3','1/4','2/4','3/4','1/5','2/5','3/5','4/5','1/2/3','1/2/4','1/3/4','2/3/4','1/2/5','1/3/5','2/3/5','1/4/5','2/4/5','3/4/5','1/2/3/4','1/2/3/5','1/2/4/5','1/3/4/5','2/3/4/5','1/2/3/4/5']
 
         print("Channel/Coincidence : Counts ")
         for i in range(len(CoincCounter_names)):
@@ -128,20 +183,16 @@ def getData(qutag, exposureTime, coincidenceWindow):
         print("Data loss: ", dataloss)
 
         timestamps_data, timestamps_channels, valid_entries = qutag.getLastTimestamps(False)
-        print("Timestamps: ", timestamps_data)
-        print("Corresponding channels: ", timestamps_channels)
         print("Valid timestamp entries: ", valid_entries)
+        timestamps_data = timestamps_data[0:valid_entries]
+        timestamps_channels = timestamps_channels[0:valid_entries]
 
-        return counts, timestamps_data, timestamps_channels, valid_entries
+        return counts, timestamps_data, timestamps_channels
 
-def generateG2(qutag):
-        hbt_func = qutag.createHBTFunction()
-        return qutag.calcHBTG2(hbt_func)
 
 if __name__ == "__main__":
         #Initialize the quTAG device
         qutag = QuTAG_MC.QuTAG()
-        qutag.enableHBT(True)
 
 
         # Deinitialize the quTAG device when done
