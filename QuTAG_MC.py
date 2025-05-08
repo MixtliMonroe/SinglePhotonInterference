@@ -45,6 +45,8 @@ except:
         print("The wrapper QuTAG.py needs numpy for arrays, please install.")
 
 LIBRARY_PATH = r'C:\\Users\\mgm1g22\\OneDrive - University of Southampton\Documents\\QUTAG-MC-WIN64QT5-v1.0.12\\tdcbase.dll'
+#r'C:\\Users\\mgm1g22\\OneDrive - University of Southampton\Documents\\QUTAG-MC-WIN64QT5-v1.0.12\\tdcbase.dll'
+#r'C:\Users\nikol\OneDrive - University of Southampton\Documents\QUTAG-MC-WIN64QT5-v1.0.12\tdcbase.dll'
 
 class QuTAG:
     # ----------------------------------------------------
@@ -111,6 +113,7 @@ class QuTAG:
         
         self._HBTBufferSize = 256
         self._LFTBufferSize = 256
+        self._Hg2BufferSize = 256
 
     def __declareAPI(self):
         """Declare the API of the DLL. Should not be executed from the user."""
@@ -368,7 +371,22 @@ class QuTAG:
         self.qutools_dll.TDC_releaseHbtFunction.restype = None
         self.qutools_dll.TDC_analyseHbtFunction.argtypes = [ctypes.POINTER(QuTAG.TDC_HbtFunction),ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_double),ctypes.c_int32]
         self.qutools_dll.TDC_analyseHbtFunction.restype = ctypes.c_int32
-        
+
+        self.qutools_dll.TDC_enableHg2.argtypes = [ctypes.c_int32]
+        self.qutools_dll.TDC_enableHg2.restype = ctypes.c_int32
+        self.qutools_dll.TDC_setHg2Params.argtypes = [ctypes.c_int32,ctypes.c_int32]
+        self.qutools_dll.TDC_setHg2Params.restype = ctypes.c_int32
+        self.qutools_dll.TDC_getHg2Params.argtypes = [ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_int32)]
+        self.qutools_dll.TDC_getHg2Params.restype = ctypes.c_int32
+        self.qutools_dll.TDC_setHg2Input.argtypes = [ctypes.c_int32,ctypes.c_int32,ctypes.c_int32]
+        self.qutools_dll.TDC_setHg2Input.restype = ctypes.c_int32
+        self.qutools_dll.TDC_getHg2Input.argtypes = [ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_int32)]
+        self.qutools_dll.TDC_getHg2Input.restype = ctypes.c_int32
+        self.qutools_dll.TDC_resetHg2Correlations.argtypes = None
+        self.qutools_dll.TDC_resetHg2Correlations.restype = ctypes.c_int32
+        self.qutools_dll.TDC_calcHg2G2.argtypes = [ctypes.POINTER(ctypes.c_double),ctypes.POINTER(ctypes.c_int32),ctypes.c_int32]
+        self.qutools_dll.TDC_calcHg2G2.restype = ctypes.c_int32
+
         # ------- tdclifetm.h --------------------------------------------------------
         self.LFT_PARAM_SIZE = 4
         # type of a lifetime model function
@@ -1124,3 +1142,62 @@ class QuTAG:
         self.qutools_dll.TDC_analyseHbtFunction(hbtfunction,ctypes.byref(capacity),ctypes.byref(size),ctypes.byref(binWidth),ctypes.byref(iOffset),values.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),self._HBTBufferSize)
         
         return (capacity.value,size.value,binWidth.value,iOffset.value,values)
+
+# HBT ---------------------------------------------------------------
+    def enableHg2(self, enable):
+        if enable:
+            ena_value = 1
+        else:
+            ena_value = 0
+        ans = self.qutools_dll.TDC_enableHg2(ena_value)
+        if ans != 0:
+            print("Error in TDC_enableHg2: "+self.err_dict[ans])
+        return ans
+    
+    def setHg2Params(self, binWidth, binCount):
+        ans = self.qutools_dll.TDC_setHg2Params(binWidth,binCount)
+        self._Hg2BufferSize = binCount * 2 - 1
+        if ans != 0:
+            print("Error in TDC_setHbtParams: "+self.err_dict[ans])
+        return ans
+    
+    def getHg2Params(self):
+        binWidth = ctypes.c_int32()
+        binCount = ctypes.c_int32()
+        ans = self.qutools_dll.TDC_getHg2Params(ctypes.byref(binWidth),ctypes.byref(binCount))
+        if ans != 0:
+            print("Error in TDC_getHg2Params: "+self.err_dict[ans])
+        return (binWidth.value, binCount.value)
+    
+    def setHg2Input(self, idler, channel1, channel2):
+        ans = self.qutools_dll.TDC_setHg2Input(idler, channel1, channel2)
+        if ans != 0:
+            print("Error in TDC_setHg2Input: "+self.err_dict[ans])
+        return ans
+    
+    def getHg2Input(self):
+        idler=ctypes.c_int32()
+        channel1=ctypes.c_int32()
+        channel2=ctypes.c_int32()
+        ans = self.qutools_dll.TDC_getHbtInput(ctypes.byref(idler), ctypes.byref(channel1), ctypes.byref(channel2))
+        if ans != 0:
+            print("Error in TDC_getHg2Input: "+self.err_dict[ans])
+        return (idler.value,channel1.value,channel2.value)
+    
+    def resetHg2Correlations(self):
+        ans = self.qutools_dll.TDC_resetHg2Correlations()
+        if ans != 0:
+            print("Error in TDC_resetHg2Correlations: "+self.err_dict[ans])
+        return ans
+    
+    def calcHg2G2(self, reset):
+        buffer =  np.zeros(self._Hg2BufferSize,dtype=np.double)
+        bufSize = ctypes.c_int32(self._Hg2BufferSize)
+        if reset:
+            reset = 1
+        else:
+            reset = 0
+        ans = self.qutools_dll.TDC_calcHg2G2(buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), ctypes.byref(bufSize), reset)
+        if ans != 0:
+            print("Error in TDC_calcHg2G2: "+self.err_dict[ans])
+        return buffer
