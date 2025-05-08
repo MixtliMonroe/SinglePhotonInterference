@@ -207,10 +207,10 @@ def getDataHBT(qutag, histogramWidth, binCount, channel1, channel2, exposureTime
         print("Capacity: ", cap, "Size: ", size, "Bin width: ", bw, "Offset: ", offset)
         return values
 
-def livePlot(qutag, channels, buffer=30, coincWindow = 50, histogramWidth = 1, binCount = 256):
+def livePlot(qutag, channels, buffer=30, coincWindow = 50, histogramWidth = 1, binCount = 256, refreshRate = 100):
         #Specify exposure time and set the coincidence window
         print(f"Coincidence window: {coincWindow} ns, scrolling buffer: {buffer} bins (~{buffer*0.1} s )")
-        qutag.setExposureTime(100)
+        qutag.setExposureTime(refreshRate)
         qutag.setCoincidenceWindow(nstotimesteps(qutag, coincWindow))
 
         binWidth = int(histogramWidth/(1e6*binCount*qutag.getTimebase()))
@@ -250,7 +250,7 @@ def livePlot(qutag, channels, buffer=30, coincWindow = 50, histogramWidth = 1, b
                 if keyboard.is_pressed('esc'):
                         print("Quitting...")
                         break
-                time.sleep(0.1)
+                time.sleep(refreshRate/1e3)
                 # Get the data from quTAG.
                 data, updates = qutag.getCoincCounters()
 
